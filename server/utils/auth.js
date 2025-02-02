@@ -1,12 +1,27 @@
 const jwt = require('jsonwebtoken');
 
-const generateAccessToken = (user) => {
-  return jwt.sign(user.toObject(), process.env.JWT_SECRET, { expiresIn: '1d' }); // TODO set to 15 minutes
-};
+/**
+ * Generate a minimal access token (15 minutes expiry)
+ * @param {Object} user - Mongoose User document
+ */
+function generateAccessToken(user) {
+  const payload = {
+    _id: user._id,
+    email: user.email,
+  };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+}
 
-const generateRefreshToken = (user) => {
-  return jwt.sign(user.toObject(), process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
-};
+/**
+ * Generate a minimal refresh token (7 days expiry)
+ * @param {Object} user - Mongoose User document
+ */
+function generateRefreshToken(user) {
+  const payload = {
+    _id: user._id,
+  };
+  return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+}
 
 module.exports = {
   generateAccessToken,

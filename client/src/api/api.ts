@@ -11,15 +11,12 @@ const api = axios.create({
   },
 });
 
-let accessToken: string | null = null;
-// Axios request interceptor: Attach access token to headers
+// Remove caching of accessToken and always read from localStorage
 api.interceptors.request.use(
   (config: AxiosRequestConfig): AxiosRequestConfig => {
-    if (!accessToken) {
-      accessToken = localStorage.getItem('accessToken');
-    }
-    if (accessToken && config.headers) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    const token = localStorage.getItem('accessToken');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -39,16 +36,15 @@ api.interceptors.response.use(
         const { data } = await axios.post<{ accessToken: string }>(`${backendURL}/api/auth/refresh`, {
           refreshToken: localStorage.getItem('refreshToken'),
         });
-        accessToken = data.accessToken;
+        localStorage.setItem('accessToken', data.accessToken); // optionally update localStorage
 
         if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         }
         return api(originalRequest);
       } catch (err) {
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('accessToken');
-        accessToken = null;
         window.location.href = '/login';
         return Promise.reject(err);
       }

@@ -17,33 +17,44 @@ if (!process.env.DATABASE_URL) {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Pretty-print JSON responses
+// Increase header size limit
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Configure CORS before routes
+const corsOptions = {
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+  maxAge: 86400 // Cache preflight request for 24 hours
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Other app settings
 app.enable('json spaces');
-// We want to be consistent with URL paths, so we enable strict routing
 app.enable('strict routing');
 
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Test route to verify server is responding
-app.get('/api/test', (req, res) => {
-  console.log('Test endpoint hit');
-  res.json({ message: 'Server is running' });
+// Increase header size limit for raw node server
+app.use((req, res, next) => {
+  req.connection.setMaxHeaderSize(81920); // 80KB
+  next();
 });
 
-// Connect to MongoDB before starting server
 const startServer = async () => {
   try {
     console.log('Attempting to connect to MongoDB...');
     await connectDB();
     console.log('MongoDB connected successfully');
 
-    // Session middleware configuration
+    // Session middleware
     app.use(
       session({
         secret: process.env.JWT_SECRET,
@@ -51,31 +62,25 @@ const startServer = async () => {
         saveUninitialized: false,
         store: MongoStore.create({
           mongoUrl: process.env.DATABASE_URL,
-          ttl: 14 * 24 * 60 * 60 // = 14 days
+          ttl: 14 * 24 * 60 * 60
         })
       })
     );
 
-    // Authentication routes
-    app.use(authRoutes);
-
-    // Basic Routes
-    app.use(basicRoutes);
-    // Authentication Routes
+    // Routes
     app.use('/api/auth', authRoutes);
-    // Todo Routes
     app.use('/api/todos', require('./routes/todoRoutes'));
-
-    // If no routes handled the request, it's a 404
-    app.use((req, res, next) => {
-      res.status(404).send("Page not found.");
-    });
+    app.use(basicRoutes);
 
     // Error handling
+    app.use((req, res) => {
+      res.status(404).json({ error: "Route not found" });
+    });
+
     app.use((err, req, res, next) => {
       console.error(`Unhandled application error: ${err.message}`);
       console.error(err.stack);
-      res.status(500).send("There was an error serving your request.");
+      res.status(500).json({ error: "Internal server error" });
     });
 
     app.listen(port, () => {

@@ -8,9 +8,19 @@ export const login = async (email: string, password: string) => {
   try {
     console.log('Making login API call with email:', email);
     const response = await api.post('/api/auth/login', { email, password });
-    console.log('Login API response:', response.data);
+    
+    // Expect { user: { _id, email }, accessToken, refreshToken }
+    const { user, accessToken, refreshToken } = response.data;
+
+    // Store only the token strings in localStorage
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+
+    // Optionally store user data separately if you need it
+    localStorage.setItem('user', JSON.stringify(user));
+
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login API error:', error?.response?.data);
     throw new Error(error?.response?.data?.message || error.message);
   }
