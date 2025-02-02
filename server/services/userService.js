@@ -14,7 +14,13 @@ class UserService {
 
   static async get(id) {
     try {
-      return User.findOne({ _id: id }).exec();
+      const user = await User.findOne({ _id: id }).exec();
+      console.log('UserService.get:', {
+        userId: id,
+        userObjSize: JSON.stringify(user).length,
+        refreshTokenSize: user.refreshToken?.length
+      });
+      return user;
     } catch (err) {
       throw new Error(`Database error while getting the user by their ID: ${err}`);
     }
@@ -46,21 +52,44 @@ class UserService {
   }
 
   static async authenticateWithPassword(email, password) {
-    if (!email) throw new Error('Email is required');
-    if (!password) throw new Error('Password is required');
-
     try {
-      const user = await User.findOne({email}).exec();
-      if (!user) return null;
+      console.log('UserService.authenticateWithPassword called:', { email });
+      
+      if (!email) throw new Error('Email is required');
+      if (!password) throw new Error('Password is required');
 
-      const passwordValid = await validatePassword(password, user.password);
-      if (!passwordValid) return null;
+      try {
+        const user = await User.findOne({email}).exec();
+        console.log('User lookup result:', {
+          userFound: !!user,
+          userType: user ? typeof user : null,
+          userMethods: user ? Object.keys(user.__proto__) : [],
+        });
 
-      user.lastLoginAt = Date.now();
-      const updatedUser = await user.save();
-      return updatedUser;
-    } catch (err) {
-      throw new Error(`Database error while authenticating user ${email} with password: ${err}`);
+        if (!user) return null;
+
+        console.log('Validating password');
+        const passwordValid = await validatePassword(password, user.password);
+        console.log('Password validation result:', { passwordValid });
+        
+        if (!passwordValid) return null;
+
+        user.lastLoginAt = Date.now();
+        console.log('Saving updated login time');
+        const updatedUser = await user.save();
+        console.log('User updated successfully');
+        
+        return updatedUser;
+      } catch (dbError) {
+        console.error('Database error in authenticateWithPassword:', dbError);
+        throw dbError;
+      }
+    } catch (error) {
+      console.error('Authentication error:', {
+        error,
+        stack: error.stack
+      });
+      throw error;
     }
   }
 

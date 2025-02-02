@@ -17,34 +17,41 @@ if (!process.env.DATABASE_URL) {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Increase header size limit
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Configure CORS before routes
-const corsOptions = {
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+// CORS configuration
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true,
-  optionsSuccessStatus: 200,
-  preflightContinue: false,
-  maxAge: 86400 // Cache preflight request for 24 hours
-};
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// Apply CORS middleware
-app.use(cors(corsOptions));
-
-// Handle preflight requests
-app.options('*', cors(corsOptions));
-
-// Other app settings
-app.enable('json spaces');
-app.enable('strict routing');
-
-// Increase header size limit for raw node server
+// Content-Type middleware
 app.use((req, res, next) => {
-  req.connection.setMaxHeaderSize(81920); // 80KB
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
+
+// Configure request size limits
+app.use(express.json({ 
+  limit: '1mb',
+  verify: (req, res, buf) => {
+    if (buf.length > 1024 * 1024) {
+      throw new Error('Request body too large');
+    }
+  }
+}));
+
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '1mb',
+  parameterLimit: 1000 
+}));
+
+// Add security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
   next();
 });
 
@@ -73,14 +80,27 @@ const startServer = async () => {
     app.use(basicRoutes);
 
     // Error handling
-    app.use((req, res) => {
-      res.status(404).json({ error: "Route not found" });
+    app.use((err, req, res, next) => {
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        body: req.body,
+        headers: req.headers
+      });
+      
+      if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        return res.status(400).json({ error: 'Invalid JSON' });
+      }
+      
+      res.status(500).json({ 
+        error: "Internal server error",
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
     });
 
-    app.use((err, req, res, next) => {
-      console.error(`Unhandled application error: ${err.message}`);
-      console.error(err.stack);
-      res.status(500).json({ error: "Internal server error" });
+    // 404 handler
+    app.use((req, res) => {
+      res.status(404).json({ error: "Route not found" });
     });
 
     app.listen(port, () => {

@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, ReactNode } from "react";
 import { login as apiLogin, register as apiRegister } from "@/api/auth";
 
@@ -13,22 +12,48 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return !!localStorage.getItem("accessToken");
+    // Clear any potentially corrupted tokens on mount
+    const accessToken = localStorage.getItem("accessToken");
+    if (accessToken && accessToken.length > 1000) { // If token is suspiciously large
+      console.log('Found large token, clearing storage');
+      localStorage.clear();
+      return false;
+    }
+    return !!accessToken;
   });
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await apiLogin(email, password);
-      if (response?.refreshToken || response?.accessToken) {
-        localStorage.setItem("refreshToken", response.refreshToken);
-        localStorage.setItem("accessToken", response.accessToken);
-        setIsAuthenticated(true);
-      } else {
-        throw new Error(error?.response?.data?.message || 'Login failed');
-      }
-    } catch (error) {
-      localStorage.removeItem("refreshToken");
+      // Clear any existing tokens before login
       localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("user");
+      
+      console.log('Login attempt - Before API call');
+      const response = await apiLogin(email, password);
+      
+      console.log('Login response - Token analysis:', {
+        accessTokenSize: response?.accessToken?.length,
+        refreshTokenSize: response?.refreshToken?.length,
+        userSize: JSON.stringify(response?.user).length
+      });
+      
+      if (response?.accessToken?.length > 1000) {
+        console.error('Received suspiciously large token, aborting');
+        throw new Error('Invalid token received');
+      }
+      
+      if (response?.accessToken && response?.refreshToken) {
+        localStorage.setItem("accessToken", response.accessToken);
+        localStorage.setItem("refreshToken", response.refreshToken);
+        if (response.user) {
+          localStorage.setItem("user", JSON.stringify(response.user));
+        }
+        setIsAuthenticated(true);
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      localStorage.clear();
       setIsAuthenticated(false);
       throw new Error(error?.message || 'Login failed');
     }

@@ -9,6 +9,27 @@ export const login = async (email: string, password: string) => {
     console.log('Making login API call with email:', email);
     const response = await api.post('/api/auth/login', { email, password });
     
+    console.log('Login API response - Token sizes:', {
+      accessTokenSize: response.data.accessToken?.length,
+      refreshTokenSize: response.data.refreshToken?.length,
+      accessTokenParts: response.data.accessToken?.split('.').map((part, index) => ({
+        part: part.slice(0, 10) + '...',
+        size: part.length,
+        decoded:
+          index < 2
+            ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+            : 'signature not parsed'
+      })),
+      refreshTokenParts: response.data.refreshToken?.split('.').map((part, index) => ({
+        part: part.slice(0, 10) + '...',
+        size: part.length,
+        decoded:
+          index < 2
+            ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+            : 'signature not parsed'
+      }))
+    });
+    
     // Expect { user: { _id, email }, accessToken, refreshToken }
     const { user, accessToken, refreshToken } = response.data;
 
@@ -48,8 +69,13 @@ export const register = async (email: string, password: string) => {
 // Response: { success: boolean, message: string }
 export const logout = async () => {
   try {
-    return await api.post('/api/auth/logout');
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      await api.post('/api/auth/logout');
+    }
   } catch (error) {
-    throw new Error(error?.response?.data?.message || error.message);
+    console.error('Logout error:', error);
+  } finally {
+    localStorage.clear();
   }
 };
